@@ -1,5 +1,4 @@
-// Auth.jsx
-// صفحة الحماية وتأمين الحسابات لمتجر RAIZEY STORE
+// Auth.jsx - صفحة الحماية وتأمين الحسابات لمتجر RAIZEY STORE
 import React, { useState } from 'react';
 import { supabase } from './supabaseClient';
 
@@ -12,52 +11,82 @@ export default function Auth({ onLoginSuccess }) {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  // دالة المعالجة لحماية المدخلات وتأمين الحسابات
   const handleAuth = async (e) => {
     e.preventDefault();
     setLoading(true);
     setErrorMessage('');
 
-    // تنظيف وفحص مبدئي للمدخلات قبل إرسالها
-    if (!email.includes('@') || password.length < 6) {
-      setErrorMessage('الرجاء إدخال بريد إلكتروني صحيح وكلمة مرور لا تقل عن 6 أحرف.');
+    // فحص المدخلات وتأمينها
+    if (password.length < 6) {
+      setErrorMessage('يجب أن تكون كلمة المرور مكونة من 6 أحرف أو أكثر.');
       setLoading(false);
       return;
     }
 
-    if (isSignUp) {
-      // عملية إنشاء حساب جديد آمن ومجاني في قاعدة البيانات
-      const { data, error } = await supabase.auth.signUp({
-        email: email.trim(),
-        password: password,
-        options: {
-          data: {
-            username: username.trim().toLowerCase(),
-            full_name: fullName.trim(),
+    try {
+      if (isSignUp) {
+        // 1. إنشاء الحساب الجديد في نظام المصادقة بـ Supabase
+        const { data: authData, error: signUpError } = await supabase.auth.signUp({
+          email: email.trim(),
+          password: password,
+          options: {
+            data: {
+              username: username.trim().toLowerCase(),
+              full_name: fullName.trim(),
+            }
+          }
+        });
+        
+        if (signUpError) throw signUpError;
+
+        if (authData?.user) {
+          // 2. خطوة أمان إضافية: إدراج الملف الشخصي للعميل في جدول profiles لضمان تفعيل محفظته برصيد 0
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .upsert({
+              id: authData.user.id,
+              email: email.trim().toLowerCase(),
+              username: username.trim().toLowerCase(),
+              full_name: fullName.trim(),
+              balance_sdg: 0 // رصيد المحفظة الافتراضي للعملاء الجدد
+            });
+
+          // إذا تم إنشاء البروفايل أو كان مسجلاً مسبقاً، نقوم بتسجيل دخوله فوراً وتوجيهه
+          if (!profileError) {
+            alert('🟢 تم إنشاء وتأمين حسابك بنجاح! جاري توجيهك إلى المتجر...');
+            onLoginSuccess(authData.user);
+          } else {
+            // في حال وجود مشكلة في جدول البروفايل، نبه العميل ليحاول تسجيل الدخول يدوياً
+            alert('تم تسجيل الحساب، يرجى محاولة تسجيل الدخول الآن لتفعيل المحفظة.');
+            setIsSignUp(false);
           }
         }
-      });
-      
-      if (error) {
-        setErrorMessage(error.message);
       } else {
-        alert('تم تسجيل حسابك بنجاح! يمكنك الآن تبديل الخيار لتسجيل الدخول مباشرة وتفعيل محفظتك.');
-        setIsSignUp(false);
-      }
-    } else {
-      // تسجيل الدخول واستخراج توكن الحماية الآمن للعميل
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password: password,
-      });
+        // تسجيل الدخول الآمن للعملاء الحاليين واستخراج توكن الحماية
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password: password,
+        });
 
-      if (error) {
-        setErrorMessage('بيانات الدخول غير صحيحة، أو الحساب غير مسجل بالسيستم.');
-      } else if (data?.user) {
-        onLoginSuccess(data.user);
+        if (signInError) throw signInError;
+        
+        if (signInData?.user) {
+          onLoginSuccess(signInData.user);
+        }
       }
+    } catch (err) {
+      console.error(err);
+      // تخصيص رسائل الخطأ لتكون مفهومة وواضحة باللغة العربية للعميل
+      if (err.message.includes('already registered')) {
+        setErrorMessage('هذا البريد الإلكتروني مسجل بالفعل، يرجى تسجيل الدخول.');
+      } else if (err.message.includes('Invalid login credentials')) {
+        setErrorMessage('بيانات الدخول غير صحيحة، تأكد من الإيميل وكلمة المرور.');
+      } else {
+        setErrorMessage(err.message);
+      }
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -66,7 +95,7 @@ export default function Auth({ onLoginSuccess }) {
         <h1 style={styles.logo}>RAIZEY <span style={{ color: '#2BED33' }}>STORE</span></h1>
         <p style={styles.subtitle}>{isSignUp ? 'إنشاء حساب جديد مشفر' : 'تسجيل الدخول للمتجر الآمن'}</p>
         
-        {errorMessage && <div style={styles.errorBox}>{errorMessage}</div>}
+        {errorMessage && <div style={styles.errorBox}>⚠️ {errorMessage}</div>}
         
         <form onSubmit={handleAuth} style={styles.form}>
           {isSignUp && (
@@ -113,7 +142,7 @@ export default function Auth({ onLoginSuccess }) {
           </button>
         </form>
         
-        <div style={styles.switchText} onClick={() => setIsSignUp(!isSignUp)}>
+        <div style={styles.switchText} onClick={() => { setIsSignUp(!isSignUp); setErrorMessage(''); }}>
           {isSignUp ? 'لديك حساب بالفعل؟ سجل دخولك هنا' : 'ليس لديك حساب؟ اضغط هنا لإنشاء حساب جديد في ثوانٍ'}
         </div>
       </div>
