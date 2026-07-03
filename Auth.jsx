@@ -5,8 +5,7 @@ export default function Auth({ onLoginSuccess }) {
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [username, setUsername] = useState('');
-  const [fullName, setFullName] = useState('');
+  const [paymentPin, setPaymentPin] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -15,12 +14,17 @@ export default function Auth({ onLoginSuccess }) {
     setLoading(true);
     setError('');
 
+    if (isSignUp && (paymentPin.length !== 4 || isNaN(paymentPin))) {
+      setError('يجب أن يتكون رمز دفع PIN من 4 أرقام فقط.');
+      setLoading(false);
+      return;
+    }
+
     try {
       if (isSignUp) {
         const { data: authData, error: signUpError } = await supabase.auth.signUp({
           email: email.trim(),
           password: password,
-          options: { data: { username: username.trim().toLowerCase(), full_name: fullName.trim() } }
         });
         if (signUpError) throw signUpError;
 
@@ -28,12 +32,11 @@ export default function Auth({ onLoginSuccess }) {
           await supabase.from('profiles').upsert({
             id: authData.user.id,
             email: email.trim().toLowerCase(),
-            username: username.trim().toLowerCase(),
-            full_name: fullName.trim(),
             balance_sdg: 0,
-            is_admin: false
+            is_admin: false,
+            payment_pin: paymentPin.trim()
           });
-          alert('🟢 تم إنشاء حسابك بنجاح! جاري توجيهك...');
+          alert('تم إنشاء حسابك بنجاح! جاري التوجيه...');
           onLoginSuccess(authData.user);
         }
       } else {
@@ -54,38 +57,32 @@ export default function Auth({ onLoginSuccess }) {
   return (
     <div style={styles.container}>
       <div style={styles.card}>
-        <div style={styles.logoContainer}>
-          <span style={styles.logoIcon}>🎮</span>
+        <div style={styles.logoArea}>
+          <div style={styles.logoHex}>R</div>
           <h1 style={styles.logoText}>RAIZEY <span style={{ color: '#2BED33' }}>STORE</span></h1>
         </div>
-        <p style={styles.subtitle}>{isSignUp ? 'أنشئ حساباً مشفراً للبدء بالشحن' : 'سجل دخولك إلى بوابتك الآمنة'}</p>
+        <p style={styles.subtitle}>{isSignUp ? 'أنشئ حسابك الجديد بلمح البصر' : 'سجل دخولك إلى منصتك الاحترافية'}</p>
 
-        {error && <div style={styles.errorBox}>⚠️ {error}</div>}
+        {error && <div style={styles.errorBox}>{error}</div>}
 
         <form onSubmit={handleAuth} style={styles.form}>
-          {isSignUp && (
-            <>
-              <input 
-                type="text" placeholder="اسم المستخدم (بالإنجليزي)" value={username} 
-                onChange={(e) => setUsername(e.target.value)} required style={styles.input} 
-              />
-              <input 
-                type="text" placeholder="الاسم الكامل باللغة العربية" value={fullName} 
-                onChange={(e) => setFullName(e.target.value)} required style={styles.input} 
-              />
-            </>
-          )}
           <input 
             type="email" placeholder="البريد الإلكتروني" value={email} 
             onChange={(e) => setEmail(e.target.value)} required style={styles.input} 
           />
           <input 
-            type="password" placeholder="كلمة المرور (6 أحرف فأكثر)" value={password} 
+            type="password" placeholder="كلمة المرور" value={password} 
             onChange={(e) => setPassword(e.target.value)} required style={styles.input} 
           />
+          {isSignUp && (
+            <input 
+              type="text" maxLength={4} placeholder="عيّن رمز دفع PIN الخاص بك (4 أرقام)" value={paymentPin} 
+              onChange={(e) => setPaymentPin(e.target.value)} required style={styles.input} 
+            />
+          )}
 
           <button type="submit" disabled={loading} style={styles.submitBtn}>
-            {loading ? 'جاري المعالجة والتحقق...' : isSignUp ? 'إنشاء حساب فوري' : 'تسجيل الدخول الآمن'}
+            {loading ? 'جاري التحقق للاتصال المباشر...' : isSignUp ? 'تأكيد إنشاء الحساب' : 'تسجيل الدخول الآمن'}
           </button>
         </form>
 
@@ -98,15 +95,15 @@ export default function Auth({ onLoginSuccess }) {
 }
 
 const styles = {
-  container: { backgroundColor: '#0a0a0a', minHeight: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px', fontFamily: 'system-ui, sans-serif', direction: 'rtl' },
-  card: { backgroundColor: '#141414', padding: '40px', borderRadius: '16px', border: '1px solid #222', width: '100%', maxWidth: '420px', boxShadow: '0 20px 40px rgba(0,0,0,0.7)', textAlign: 'center' },
-  logoContainer: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '8px' },
-  logoIcon: { fontSize: '28px' },
-  logoText: { color: '#fff', fontSize: '26px', fontWeight: '8px', margin: 0, letterSpacing: '1px' },
-  subtitle: { color: '#666', fontSize: '14px', margin: '0 0 30px 0' },
+  container: { backgroundColor: '#070708', minHeight: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px', fontFamily: '"Cairo", system-ui, sans-serif', direction: 'rtl' },
+  card: { backgroundColor: '#0f0f12', padding: '40px', borderRadius: '24px', border: '1px solid #1e1e24', width: '100%', maxWidth: '420px', boxShadow: '0 30px 60px rgba(0,0,0,0.8)', textAlign: 'center' },
+  logoArea: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', marginBottom: '16px' },
+  logoHex: { width: '50px', height: '50px', backgroundColor: '#2BED33', color: '#000', borderRadius: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '24px', fontWeight: 'bold', transform: 'rotate(45deg)', margin: '10px 0' },
+  logoText: { color: '#fff', fontSize: '28px', fontWeight: '900', margin: 0, transform: 'rotate(0deg)' },
+  subtitle: { color: '#626278', fontSize: '14px', margin: '0 0 32px 0' },
   form: { display: 'flex', flexDirection: 'column', gap: '16px' },
-  input: { backgroundColor: '#1d1d1d', color: '#fff', border: '1px solid #333', padding: '14px 16px', borderRadius: '10px', fontSize: '14px', outline: 'none', textAlign: 'right', transition: 'border-color 0.2s' },
-  submitBtn: { backgroundColor: '#2BED33', color: '#000', border: 'none', padding: '14px', borderRadius: '10px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer', marginTop: '10px', transition: 'transform 0.1s' },
-  switchText: { color: '#2BED33', marginTop: '24px', fontSize: '13px', cursor: 'pointer', textDecoration: 'underline' },
-  errorBox: { backgroundColor: 'rgba(255,77,77,0.1)', color: '#ff4d4d', border: '1px solid rgba(255,77,77,0.2)', padding: '12px', borderRadius: '8px', marginBottom: '20px', fontSize: '13px', textAlign: 'right' }
+  input: { backgroundColor: '#16161c', color: '#fff', border: '1px solid #252530', padding: '14px 18px', borderRadius: '12px', fontSize: '14px', outline: 'none', textAlign: 'right', transition: 'all 0.3s' },
+  submitBtn: { backgroundColor: '#2BED33', color: '#000', border: 'none', padding: '14px', borderRadius: '12px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer', marginTop: '12px', transition: 'all 0.2s' },
+  switchText: { color: '#2BED33', marginTop: '26px', fontSize: '13px', cursor: 'pointer', opacity: 0.8 },
+  errorBox: { backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)', padding: '12px', borderRadius: '10px', marginBottom: '20px', fontSize: '13px', textAlign: 'right' }
 };
