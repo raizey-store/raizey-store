@@ -25,7 +25,7 @@ export default function Store({ user, onNavigate }) {
         if (profile) setBalanceSdg(profile.balance_sdg || 0);
       }
 
-      // 2. قائمة عروض الألعاب الافتراضية بالجنيه السوداني (ويمكنك لاحقاً جلبها من قاعدة البيانات)
+      // 2. قائمة عروض الألعاب الافتراضية بالجنيه السوداني
       const mockGames = [
         {
           id: 1,
@@ -99,7 +99,6 @@ export default function Store({ user, onNavigate }) {
 
       alert(`🟢 تم خصم المبلغ بنجاح وإرسال طلب شحن ${selectedItem.name} بالـ ID: ${gameId} للأدمن محمد وجاري التنفيذ!`);
       
-      // إعادة تعيين الواجهة وتحديث البيانات
       setGameId('');
       setSelectedItem(null);
       fetchStoreData();
