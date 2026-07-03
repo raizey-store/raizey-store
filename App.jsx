@@ -26,9 +26,6 @@ export default function App() {
     setCurrentScreen(screenName);
   };
 
-  // فحص ما إذا كان المستخدم الحالي هو الأدمن محمد الصادق لفتح اللوحة له
-  const isAdmin = user && user.email === 'mohamedalsadiq@gmail.com';
-
   return (
     <div style={{ backgroundColor: '#141414', minHeight: '100vh', color: '#ffffff' }}>
       
@@ -36,15 +33,13 @@ export default function App() {
       <div style={{ display: 'flex', gap: '10px', padding: '10px', backgroundColor: '#1e1e1e', justifyContent: 'center', borderBottom: '1px solid #2d2d2d' }}>
         <button onClick={() => handleNavigate('store')} style={currentScreen === 'store' ? activeStyle : inactiveStyle}>🛒 المتجر الرئيسي</button>
         <button onClick={() => handleNavigate('wallet')} style={currentScreen === 'wallet' ? activeStyle : inactiveStyle}>💼 محفظتي السودانية</button>
-        {isAdmin && (
-          <button onClick={() => handleNavigate('admin')} style={currentScreen === 'admin' ? adminActiveStyle : adminInactiveStyle}>🎛️ لوحة تحكم الإدارة</button>
-        )}
+        <button onClick={() => handleNavigate('admin')} style={currentScreen === 'admin' ? adminActiveStyle : adminInactiveStyle}>🎛️ لوحة تحكم الإدارة (سري)</button>
       </div>
 
       {/* عرض الشاشة المختارة بناءً على حالة التنقل الحالية */}
       {currentScreen === 'store' && <Store user={user} onNavigate={handleNavigate} />}
       {currentScreen === 'wallet' && <Wallet user={user} onNavigate={handleNavigate} />}
-      {currentScreen === 'admin' && isAdmin && <AdminDashboard onNavigate={handleNavigate} />}
+      {currentScreen === 'admin' && <AdminDashboard onNavigate={handleNavigate} />}
 
     </div>
   );
