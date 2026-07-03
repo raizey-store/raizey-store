@@ -1,4 +1,4 @@
-// AdminDashboard.jsx - لوحة التحكم المبسطة والمنظمة
+// AdminDashboard.jsx - النسخة المرنة الذكية لتفادي أخطاء الأعمدة
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 
@@ -11,16 +11,15 @@ export default function AdminDashboard() {
     fetchOrders();
   }, []);
 
-  // جلب الطلبات بشكل سليم دون استدعاء أعمدة غير موجودة
   async function fetchOrders() {
     try {
       setLoading(true);
       setError(null);
       
-      // جلب الأعمدة الأساسية المتوفرة دائماً لتفادي أخطاء السيرفر
+      // استخدام '*' لجلب كل الأعمدة المتاحة أياً كانت مسمياتها لتفادي خطأ الاختفاء
       const { data, error } = await supabase
         .from('orders')
-        .select('id, created_at, product_name, player_id, price, status');
+        .select('*');
 
       if (error) throw error;
       setOrders(data || []);
@@ -32,7 +31,6 @@ export default function AdminDashboard() {
     }
   }
 
-  // تحديث حالة الطلب يدوياً (مكتمل / معلق)
   async function updateStatus(orderId, newStatus) {
     const { error } = await supabase
       .from('orders')
@@ -40,7 +38,7 @@ export default function AdminDashboard() {
       .eq('id', orderId);
 
     if (!error) {
-      fetchOrders(); // إعادة تحديث القائمة فوراً
+      fetchOrders();
     }
   }
 
@@ -56,7 +54,7 @@ export default function AdminDashboard() {
       
       {error && (
         <div style={{ backgroundColor: '#ff4d4d22', border: '1px solid #ff4d4d', padding: '10px', borderRadius: '6px', marginBottom: '15px' }}>
-          <p style={{ color: '#ff4d4d', margin: 0, fontSize: '12px' }}>⚠️ خطأ في قاعدة البيانات: {error}</p>
+          <p style={{ color: '#ff4d4d', margin: 0, fontSize: '12px' }}>⚠️ تنبيه من قاعدة البيانات: {error}</p>
         </div>
       )}
 
@@ -66,14 +64,22 @@ export default function AdminDashboard() {
 
       {orders.map((order) => (
         <div key={order.id} style={{ backgroundColor: '#141414', padding: '12px', borderRadius: '6px', marginBottom: '10px', border: '1px solid #333' }}>
-          <div style={{ display: 'flex', justifyContent: 'between', marginBottom: '8px' }}>
-            <span style={{ fontWeight: 'bold', color: '#2BED33' }}>{order.product_name}</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+            {/* قراءة مرنة لاسم المنتج أياً كان مسمى العمود في حسابك */}
+            <span style={{ fontWeight: 'bold', color: '#2BED33' }}>
+              {order.product_name || order.product || order.name || 'منتج غير محدد'}
+            </span>
             <span style={{ fontSize: '12px', color: order.status === 'completed' ? '#2BED33' : '#ffcc00' }}>
               {order.status === 'completed' ? '✅ مكتمل' : '⏳ قيد الانتظار'}
             </span>
           </div>
-          <p style={{ margin: '4px 0', fontSize: '13px', color: '#ccc' }}>🆔 معرف اللاعب (ID): <strong style={{ color: '#fff' }}>{order.player_id}</strong></p>
-          <p style={{ margin: '4px 0', fontSize: '13px', color: '#ccc' }}>💰 القيمة: {order.price} ج.س</p>
+          
+          <p style={{ margin: '4px 0', fontSize: '13px', color: '#ccc' }}>
+            🆔 معرف اللاعب (ID): <strong style={{ color: '#fff' }}>{order.player_id || order.player || order.id}</strong>
+          </p>
+          <p style={{ margin: '4px 0', fontSize: '13px', color: '#ccc' }}>
+            💰 القيمة: {order.price || 0} ج.س
+          </p>
           
           {order.status !== 'completed' && (
             <button onClick={() => updateStatus(order.id, 'completed')} style={{ marginTop: '8px', width: '100%', backgroundColor: '#2BED33', color: '#141414', border: 'none', padding: '6px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' }}>
