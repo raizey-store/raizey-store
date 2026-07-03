@@ -1,151 +1,117 @@
-// Storefront.jsx
-// واجهة عرض المنتجات والأقسام الذكية لمتجر RAIZEY STORE
-import React, { useState, useEffect } from 'react';
+// Storefront.jsx - واجهة عرض المنتجات وشحن الـ ID المرتبة
+import React, { useState } from 'react';
 import { supabase } from './supabaseClient';
 
-export default function Storefront({ user, onNavigate, onLogout, isAdmin }) {
-  const [exchangeRate, setExchangeRate] = useState(0);
-  const [products, setProducts] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [loading, setLoading] = useState(true);
+export default function Storefront({ user }) {
+  const [playerId, setPlayerId] = useState('');
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
 
-  useEffect(() => {
-    fetchStoreData();
-  }, []);
+  // قائمة المنتجات الثابتة والمنظمة بالجنيه السوداني
+  const products = [
+    { id: 'pubg_60', name: '60 شدة (UC)', category: 'PUBG MOBILE', price: 1500 },
+    { id: 'pubg_325', name: '325 شدة (UC)', category: 'PUBG MOBILE', price: 6800 },
+    { id: 'pubg_660', name: '660 شدة (UC)', category: 'PUBG MOBILE', price: 13500 },
+    { id: 'ff_100', name: '100 جوهرة', category: 'Free Fire', price: 1200 },
+    { id: 'ff_210', name: '210 جوهرة', category: 'Free Fire', price: 2400 },
+    { id: 'ff_530', name: '530 جوهرة', category: 'Free Fire', price: 5800 }
+  ];
 
-  const fetchStoreData = async () => {
-    setLoading(true);
-    try {
-      // 1. جلب سعر صرف الدولار الحالي مقابل الجنيه من السيستم
-      const { data: rateData } = await supabase
-        .from('exchange_rates')
-        .select('rate')
-        .eq('id', 1)
-        .single();
-      
-      if (rateData) setExchangeRate(rateData.rate);
-
-      // 2. جلب الأقسام الفعالة بالمتجر
-      const { data: catData } = await supabase
-        .from('categories')
-        .select('*')
-        .order('id');
-      if (catData) setCategories(catData);
-
-      // 3. جلب المنتجات والعروض المتوفرة بالمخزن
-      const { data: prodData } = await supabase
-        .from('products')
-        .select('*')
-        .eq('is_available', true);
-      if (prodData) setProducts(prodData);
-
-    } catch (err) {
-      console.error('Error fetching data:', err);
+  // إرسال طلب الشحن إلى قاعدة البيانات
+  async function handleOrder(e) {
+    e.preventDefault();
+    if (!playerId) {
+      setMessage('⚠️ الرجاء إدخال معرف اللاعب (ID) أولاً!');
+      return;
     }
-    setLoading(false);
-  };
 
-  if (loading) {
-    return <div style={{textAlign:'center', padding:'50px', color:'#2BED33', backgroundColor:'#141414', minHeight:'100vh'}}>جاري جلب العروض وتحديث الأسعار فورياً...</div>;
+    try {
+      setLoading(true);
+      setMessage('');
+
+      // إدخال الطلب بالأعمدة المتوافقة تماماً مع الجدول المتوفر
+      const { error } = await supabase
+        .from('orders')
+        .insert([
+          {
+            product_name: selectedProduct.name,
+            player_id: playerId,
+            price: selectedProduct.price,
+            status: 'pending' // الطلب يبدأ قيد الانتظار
+          }
+        ]);
+
+      if (error) throw error;
+
+      setMessage('✅ تم إرسال طلب الشحن بنجاح! سيقوم الأدمن بالتنفيذ فوراً.');
+      setPlayerId('');
+      setSelectedProduct(null);
+    } catch (err) {
+      setMessage(`⚠️ فشل إرسال الطلب: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
-    <div style={styles.container}>
-      {/* رأس الصفحة والهيدر */}
-      <header style={styles.header}>
-        <div style={styles.brandZone}>
-          <h1 style={styles.logo}>RAIZEY <span style={{color:'#2BED33'}}>STORE</span></h1>
-          <p style={styles.rateBadge}>💲 سعر الدولار اليوم بالسيستم: {exchangeRate.toLocaleString()} ج.س</p>
+    <div style={{ padding: '5px' }}>
+      <h2 style={{ textCenter: 'center', color: '#2BED33', marginBottom: '20px', fontSize: '20px', textAlign: 'center' }}>🎮 متجر رايزي لشحن الألعاب</h2>
+      
+      {message && (
+        <div style={{ backgroundColor: '#222', border: '1px solid #333', padding: '10px', borderRadius: '6px', marginBottom: '15px', color: '#fff', textAlign: 'center', fontSize: '14px' }}>
+          {message}
         </div>
-        
-        {/* أزرار التحكم والملف الشخصي للعميل */}
-        <div style={styles.actionNav}>
-          <button onClick={() => onNavigate('wallet')} style={styles.walletBtn}>💼 محفظتي وطلباتي</button>
-          {!isAdmin && <button onClick={onLogout} style={styles.logoutBtn}>🚪 تسجيل خروج</button>}
+      )}
+
+      {/* عرض قائمة المنتجات */}
+      {!selectedProduct ? (
+        <div>
+          {['PUBG MOBILE', 'Free Fire'].map((cat) => (
+            <div key={cat} style={{ marginBottom: '25px' }}>
+              <h3 style={{ color: cat === 'PUBG MOBILE' ? '#2BED33' : '#ffcc00', borderBottom: '1px solid #333', paddingBottom: '5px', fontSize: '16px' }}>👑 {cat}</h3>
+              {products.filter(p => p.category === cat).map((product) => (
+                <div key={product.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1e1e1e', padding: '12px', borderRadius: '6px', marginBottom: '8px', border: '1px solid #2d2d2d' }}>
+                  <div>
+                    <div style={{ fontWeight: 'bold', fontSize: '14px' }}>{product.name}</div>
+                    <div style={{ color: '#aaa', fontSize: '12px', marginTop: '4px' }}>{product.price} ج.س</div>
+                  </div>
+                  <button onClick={() => setSelectedProduct(product)} style={{ backgroundColor: '#2BED33', color: '#141414', border: 'none', padding: '6px 14px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}>
+                    شراء ⚡
+                  </button>
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
-      </header>
-
-      {/* شريط الأقسام المتاحة بالمتجر (ببجي، فري فاير، إلخ) */}
-      <div style={styles.categoryBar}>
-        <button 
-          onClick={() => setSelectedCategory('all')} 
-          style={selectedCategory === 'all' ? styles.activeCategoryBtn : styles.categoryBtn}
-        >
-          🔥 الكل
-        </button>
-        {categories.map(cat => (
-          <button
-            key={cat.id}
-            onClick={() => setSelectedCategory(cat.id)}
-            style={selectedCategory === cat.id ? styles.activeCategoryBtn : styles.categoryBtn}
-          >
-            {cat.name_ar}
-          </button>
-        ))}
-      </div>
-
-      {/* شبكة عرض كروت العروض والمنتجات المتاحة */}
-      <main style={styles.grid}>
-        {products
-          .filter(p => selectedCategory === 'all' || p.category_id === selectedCategory)
-          .map(product => {
-            const priceInSDG = product.price_usd * exchangeRate;
-            return (
-              <div key={product.id} style={styles.productCard}>
-                <div style={styles.cardHeader}>
-                  <span style={styles.categoryLabel}>{product.tag_label || 'شحن فوري'}</span>
-                  <h3 style={styles.productTitle}>{product.title}</h3>
-                </div>
-                
-                <p style={styles.description}>{product.description_ar}</p>
-                
-                <div style={styles.priceContainer}>
-                  <div style={styles.priceBox}>
-                    <small style={styles.currencyLabel}>بالجنيه السوداني</small>
-                    <span style={styles.priceSDG}>{priceInSDG.toLocaleString()} <small>ج.س</small></span>
-                  </div>
-                  <div style={styles.usdBox}>
-                    <span>{product.price_usd} $</span>
-                  </div>
-                </div>
-
-                <button 
-                  onClick={() => onNavigate('wallet')} 
-                  style={styles.buyBtn}
-                >
-                  🛒 اطلب شحن العرض الآن
-                </button>
-              </div>
-            );
-          })}
-      </main>
+      ) : (
+        // نافذة طلب الشحن وإدخال الـ ID
+        <div style={{ backgroundColor: '#1e1e1e', padding: '15px', borderRadius: '8px', border: '1px solid #2d2d2d' }}>
+          <h3 style={{ margin: '0 0 10px 0', color: '#fff', fontSize: '15px' }}>تأكيد طلب: <span style={{ color: '#2BED33' }}>{selectedProduct.name}</span></h3>
+          <p style={{ margin: '0 0 15px 0', color: '#aaa', fontSize: '13px' }}>السعر: {selectedProduct.price} جنيه سوداني</p>
+          
+          <form onSubmit={handleOrder}>
+            <label style={{ display: 'block', marginBottom: '8px', fontSize: '13px', color: '#ccc' }}>أدخل معرف اللاعب (ID):</label>
+            <input 
+              type="text" 
+              value={playerId} 
+              onChange={(e) => setPlayerId(e.target.value)} 
+              placeholder="مثال: 54129883" 
+              required
+              style={{ width: '100%', padding: '10px', backgroundColor: '#141414', border: '1px solid #333', borderRadius: '4px', color: '#fff', marginBottom: '15px', boxSizing: 'border-box' }}
+            />
+            
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button type="submit" disabled={loading} style={{ flex: 1, backgroundColor: '#2BED33', color: '#141414', border: 'none', padding: '10px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
+                {loading ? 'جاري الإرسال...' : 'تأكيد وإرسال الطلب 🚀'}
+              </button>
+              <button type="button" onClick={() => setSelectedProduct(null)} style={{ backgroundColor: '#333', color: '#fff', border: 'none', padding: '10px', borderRadius: '4px', cursor: 'pointer' }}>
+                إلغاء
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
-
-const styles = {
-  container: { backgroundColor: '#141414', minHeight: '100vh', color: '#ffffff', fontFamily: 'sans-serif', direction: 'rtl', paddingBottom: '40px' },
-  header: { backgroundColor: '#1e1e1e', padding: '15px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px', borderBottom: '1px solid #2d2d2d' },
-  brandZone: { display: 'flex', flexDirection: 'column', gap: '5px' },
-  logo: { fontSize: '24px', fontWeight: 'bold', margin: 0, color: '#ffffff' },
-  rateBadge: { fontSize: '12px', color: '#aaaaaa', margin: 0, backgroundColor: '#141414', padding: '4px 8px', borderRadius: '4px', border: '1px solid #333' },
-  actionNav: { display: 'flex', gap: '10px' },
-  walletBtn: { backgroundColor: '#2BED33', color: '#141414', border: 'none', padding: '8px 16px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' },
-  logoutBtn: { backgroundColor: '#ff4d4d', color: '#ffffff', border: 'none', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' },
-  categoryBar: { display: 'flex', gap: '10px', padding: '15px 20px', overflowX: 'auto', borderBottom: '1px solid #1e1e1e' },
-  categoryBtn: { backgroundColor: '#1e1e1e', color: '#ffffff', border: '1px solid #333', padding: '8px 16px', borderRadius: '20px', whiteSpace: 'nowrap', cursor: 'pointer', fontSize: '13px' },
-  activeCategoryBtn: { backgroundColor: '#2BED33', color: '#141414', border: 'none', padding: '8px 16px', borderRadius: '20px', whiteSpace: 'nowrap', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' },
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px', padding: '20px' },
-  productCard: { backgroundColor: '#1e1e1e', borderRadius: '12px', padding: '20px', display: 'flex', flexDirection: 'column', border: '1px solid #2d2d2d', justifyContent: 'space-between' },
-  cardHeader: { display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '10px' },
-  categoryLabel: { color: '#2BED33', fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase' },
-  productTitle: { color: '#ffffff', fontSize: '18px', margin: 0, fontWeight: 'bold' },
-  description: { color: '#aaaaaa', fontSize: '13px', lineHeight: '1.5', margin: '0 0 15px 0', minHeight: '40px' },
-  priceContainer: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#141414', padding: '10px', borderRadius: '8px', marginBottom: '15px', border: '1px solid #2d2d2d' },
-  priceBox: { display: 'flex', flexDirection: 'column' },
-  currencyLabel: { color: '#aaaaaa', fontSize: '10px' },
-  priceSDG: { color: '#2BED33', fontSize: '18px', fontWeight: 'bold' },
-  usdBox: { color: '#aaaaaa', fontSize: '13px', borderRight: '1px solid #333', paddingRight: '10px' },
-  buyBtn: { backgroundColor: '#141414', color: '#2BED33', border: '1px solid #2BED33', padding: '12px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', textAlign: 'center', fontSize: '14px', transition: 'all 0.2s' }
-};
