@@ -1,222 +1,124 @@
-// AdminDashboard.jsx - النسخة الاحترافية المحدثة لـ محمد الصادق لإدارة الإيداعات وطلبات الشحن بالـ ID
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 
 export default function AdminDashboard({ onNavigate }) {
   const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [activeTab, setActiveTab] = useState('deposits'); // deposits أو games
-  const [actionLoading, setActionLoading] = useState(false);
+  const [settings, setSettings] = useState({});
+  const [activeSubTab, setActiveSubTab] = useState('orders_recharge'); // orders_recharge | orders_wallet | pricing
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetchOrders();
-  }, []);
+    fetchAdminData();
+  }, [activeSubTab]);
 
-  async function fetchOrders() {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const { data, error } = await supabase
-        .from('orders')
-        .select('*')
-        .order('created_at', { ascending: false });
+  async function fetchAdminData() {
+    setLoading(true);
+    const { data: settle } = await supabase.from('store_settings').select('*').eq('id', 1).single();
+    if (settle) setSettings(settle);
 
-      if (error) throw error;
-      setOrders(data || []);
-    } catch (err) {
-      console.error(err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+    const { data: ords } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
+    if (ords) setOrders(ords);
+    setLoading(false);
   }
 
-  // اعتماد طلبات شحن المحفظة (بنكك) وإضافة الرصيد لحساب العميل
-  async function handleApproveDeposit(order) {
-    if (!window.confirm(`هل تأكدت من تطبيق بنكك ووصول مبلغ ${order.total_sdg.toLocaleString()} ج.س برقم العملية ${order.transaction_number}؟`)) return;
-    
-    setActionLoading(true);
+  const handleUpdateSettings = async (e) => {
+    e.preventDefault();
+    await supabase.from('store_settings').update(settings).eq('id', 1);
+    alert('✅ تم تحديث إعدادات وأسعار المتجر بنجاح!');
+  };
+
+  const handleAction = async (order, newStatus) => {
+    if (!window.confirm('هل أنت متأكد من تغيير حالة هذا الطلب؟')) return;
     try {
-      // 1. جلب رصيد العميل الحالي
-      const { data: profile, error: fetchErr } = await supabase
-        .from('profiles')
-        .select('balance_sdg')
-        .eq('id', order.user_id)
-        .single();
-
-      if (fetchErr) throw fetchErr;
-
-      const newBalance = (profile?.balance_sdg || 0) + Number(order.total_sdg);
-
-      // 2. تحديث الرصيد الجديد في البروفايل
-      const { error: profileErr } = await supabase
-        .from('profiles')
-        .update({ balance_sdg: newBalance })
-        .eq('id', order.user_id);
-
-      if (profileErr) throw profileErr;
-
-      // 3. تحديث حالة الطلب إلى مكتمل
-      const { error: orderErr } = await supabase
-        .from('orders')
-        .update({ status: 'approved' })
-        .eq('id', order.id);
-
-      if (orderErr) throw orderErr;
-
-      alert('🟢 تم اعتماد الإيداع بنجاح وإضافة الرصيد لمحفظة العميل!');
-      fetchOrders();
+      if (order.order_type === 'wallet_deposit' && newStatus === 'approved') {
+        const { data: prof } = await supabase.from('profiles').select('balance_sdg').eq('id', order.user_id).single();
+        const currentBalance = Number(prof?.balance_sdg || 0);
+        await supabase.from('profiles').update({ balance_sdg: currentBalance + Number(order.total_sdg) }).eq('id', order.user_id);
+      }
+      await supabase.from('orders').update({ status: newStatus }).eq('id', order.id);
+      fetchAdminData();
     } catch (err) {
-      alert('حدث خطأ أثناء الاعتماد: ' + err.message);
-    } finally {
-      setActionLoading(false);
+      alert(err.message);
     }
-  }
+  };
 
-  // إكمال طلبات شحن الألعاب بالـ ID (بعد أن تشحن له يدوياً باللعبة)
-  async function handleCompleteGameOrder(orderId) {
-    if (!window.confirm('هل قمت بشحن حساب اللاعب في اللعبة بالفعل وتريد إكمال الطلب؟')) return;
-    
-    setActionLoading(true);
-    try {
-      const { error } = await supabase
-        .from('orders')
-        .update({ status: 'approved' })
-        .eq('id', orderId);
-
-      if (error) throw error;
-      alert('✅ تم تحديد طلب شحن اللعبة كمكتمل بنجاح!');
-      fetchOrders();
-    } catch (err) {
-      alert('حدث خطأ: ' + err.message);
-    } finally {
-      setActionLoading(false);
-    }
-  }
-
-  // رفض أي طلب (سواء إيداع وهمي أو مشكلة في ID اللعبة)
-  async function handleRejectOrder(orderId) {
-    if (!window.confirm('هل أنت متأكد من رفض هذا الطلب؟')) return;
-
-    setActionLoading(true);
-    try {
-      const { error } = await supabase
-        .from('orders')
-        .update({ status: 'rejected' })
-        .eq('id', orderId);
-
-      if (error) throw error;
-      alert('🔴 تم رفض الطلب بنجاح.');
-      fetchOrders();
-    } catch (err) {
-      alert('حدث خطأ أثناء الرفض: ' + err.message);
-    } finally {
-      setActionLoading(false);
-    }
-  }
-
-  // تصفية الطلبات بناءً على التبويب المختار
-  const filteredOrders = orders.filter(order => {
-    if (activeTab === 'deposits') return order.order_type === 'wallet_deposit';
-    return order.order_type === 'game_recharge';
-  });
+  const filteredOrders = orders.filter(o => activeSubTab === 'orders_recharge' ? o.order_type === 'game_recharge' : o.order_type === 'wallet_deposit');
 
   return (
-    <div style={{ padding: '15px', backgroundColor: '#1e1e1e', borderRadius: '12px', border: '1px solid #2d2d2d', direction: 'rtl' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-        <h2 style={{ color: '#2BED33', margin: 0, fontSize: '18px' }}>🎛️ لوحة تحكم الإدارة - RAIZEY STORE</h2>
-        <button onClick={fetchOrders} style={{ backgroundColor: '#333', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>🔄 تحديث</button>
+    <div style={styles.container}>
+      <header style={styles.header}>
+        <h2 style={{ margin: 0, color: '#ffcc00' }}>🎛️ غُرفة تحكّم الإدارة العليا</h2>
+        <button onClick={() => onNavigate('store')} style={styles.backBtn}>🛒 العودة للمتجر</button>
+      </header>
+
+      <div style={styles.subTabs}>
+        <button onClick={() => setActiveSubTab('orders_recharge')} style={activeSubTab === 'orders_recharge' ? styles.activeTab : styles.tab}>🎮 طلبات الـ ID ({orders.filter(o => o.order_type === 'game_recharge' && o.status === 'pending').length})</button>
+        <button onClick={() => setActiveSubTab('orders_wallet')} style={activeSubTab === 'orders_wallet' ? styles.activeTab : styles.tab}>💰 طلبات بنكك ({orders.filter(o => o.order_type === 'wallet_deposit' && o.status === 'pending').length})</button>
+        <button onClick={() => setActiveSubTab('pricing')} style={activeSubTab === 'pricing' ? styles.activeTab : styles.tab}>⚙️ الإعدادات والأسعار</button>
       </div>
 
-      {/* أزرار التبويبات والتحكم */}
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-        <button 
-          onClick={() => setActiveTab('deposits')} 
-          style={activeTab === 'deposits' ? tabActiveStyle : tabInactiveStyle}
-        >
-          💰 إيداعات بنكك المعلقة ({orders.filter(o => o.order_type === 'wallet_deposit' && o.status === 'pending').length})
-        </button>
-        <button 
-          onClick={() => setActiveTab('games')} 
-          style={activeTab === 'games' ? tabActiveStyle : tabInactiveStyle}
-        >
-          🎮 طلبات الألعاب بالـ ID ({orders.filter(o => o.order_type === 'game_recharge' && o.status === 'pending').length})
-        </button>
-      </div>
+      {loading ? (
+        <p style={{ textAlign: 'center', color: '#666' }}>جاري المزامنة مع قاعدة البيانات...</p>
+      ) : activeSubTab === 'pricing' ? (
+        <form onSubmit={handleUpdateSettings} style={styles.settingsForm}>
+          <h3>💰 حساب بنكك المعتمد للتحويل</h3>
+          <input type="text" placeholder="رقم حساب بنكك" value={settings.bankak_account || ''} onChange={(e) => setSettings({ ...settings, bankak_account: e.target.value })} style={styles.input} />
+          <input type="text" placeholder="اسم صاحب الحساب" value={settings.bankak_name || ''} onChange={(e) => setSettings({ ...settings, bankak_name: e.target.value })} style={styles.input} />
+          
+          <h3>💵 تسعير باقات ببجي موبايل (ج.س)</h3>
+          <input type="number" placeholder="سعر 60 شدة" value={settings.pubg_60_price || ''} onChange={(e) => setSettings({ ...settings, pubg_60_price: Number(e.target.value) })} style={styles.input} />
+          <input type="number" placeholder="سعر 325 شدة" value={settings.pubg_325_price || ''} onChange={(e) => setSettings({ ...settings, pubg_325_price: Number(e.target.value) })} style={styles.input} />
+          <input type="number" placeholder="سعر 660 شدة" value={settings.pubg_660_price || ''} onChange={(e) => setSettings({ ...settings, pubg_660_price: Number(e.target.value) })} style={styles.input} />
 
-      {loading && <p style={{ color: '#aaa', textAlign: 'center', padding: '20px' }}>جاري جلب البيانات والتأكد من العمليات...</p>}
-      {error && <p style={{ color: '#ff4d4d', textAlign: 'center' }}>⚠️ خطأ: {error}</p>}
+          <h3>🔥 تسعير باقات فري فاير (ج.س)</h3>
+          <input type="number" placeholder="سعر 100 جوهرة" value={settings.ff_100_price || ''} onChange={(e) => setSettings({ ...settings, ff_100_price: Number(e.target.value) })} style={styles.input} />
+          <input type="number" placeholder="سعر 210 جوهرة" value={settings.ff_210_price || ''} onChange={(e) => setSettings({ ...settings, ff_210_price: Number(e.target.value) })} style={styles.input} />
+          <input type="number" placeholder="سعر 530 جوهرة" value={settings.ff_530_price || ''} onChange={(e) => setSettings({ ...settings, ff_530_price: Number(e.target.value) })} style={styles.input} />
 
-      {!loading && filteredOrders.length === 0 && (
-        <p style={{ color: '#aaa', textAlign: 'center', padding: '30px' }}>لا توجد طلبات في هذا القسم حالياً.</p>
+          <button type="submit" style={styles.saveBtn}>حفظ التغييرات وتحديث المتجر فوراً</button>
+        </form>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {filteredOrders.map((ord) => (
+            <div key={ord.id} style={styles.adminOrderRow}>
+              <div>
+                <p style={{ margin: 0 }}>📧 العميل: <strong>{ord.user_email}</strong></p>
+                <p style={{ margin: '4px 0 0 0', color: '#ffcc00' }}>
+                  {ord.order_type === 'game_recharge' ? `🎮 شحن ${ord.package_name} لـ ID: [ ${ord.game_id} ]` : `🔢 رقم عملية بنكك: ${ord.transaction_number}`}
+                </p>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                <span style={{ color: '#2BED33', fontWeight: 'bold' }}>{Number(ord.total_sdg).toLocaleString()} ج.س</span>
+                {ord.status === 'pending' ? (
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button onClick={() => handleAction(ord, 'approved')} style={styles.approveBtn}>اعتماد ✅</button>
+                    <button onClick={() => handleAction(ord, 'rejected')} style={styles.rejectBtn}>رفض ❌</button>
+                  </div>
+                ) : (
+                  <span style={{ color: ord.status === 'approved' ? '#2BED33' : '#ff4d4d', fontSize: '13px' }}>
+                    {ord.status === 'approved' ? 'مكتمل' : 'مرفوض'}
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
       )}
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        {filteredOrders.map((order) => (
-          <div key={order.id} style={{ backgroundColor: '#141414', padding: '15px', borderRadius: '8px', border: '1px solid #333' }}>
-            
-            {/* معلومات مشتركة */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap', gap: '5px' }}>
-              <span style={{ fontSize: '13px', color: '#aaa' }}>📧 العميل: <strong>{order.user_email}</strong></span>
-              <span style={{ 
-                fontSize: '12px', 
-                padding: '3px 8px', 
-                borderRadius: '4px', 
-                fontWeight: 'bold',
-                backgroundColor: order.status === 'pending' ? '#ffcc0022' : order.status === 'approved' ? '#2bed3322' : '#ff4d4d22',
-                color: order.status === 'pending' ? '#ffcc00' : order.status === 'approved' ? '#2BED33' : '#ff4d4d'
-              }}>
-                {order.status === 'pending' ? '⏳ معلق' : order.status === 'approved' ? '✅ مكتمل' : '🔴 مرفوض'}
-              </span>
-            </div>
-
-            {/* تفاصيل بناءً على نوع التبويب المختار */}
-            {activeTab === 'deposits' ? (
-              <div style={{ fontSize: '13px', lineHeight: '1.6' }}>
-                <p style={{ margin: '4px 0' }}>🔢 رقم العملية المرسل: <strong style={{ color: '#ffcc00', fontFamily: 'monospace' }}>{order.transaction_number}</strong></p>
-                <p style={{ margin: '4px 0' }}>💰 المبلغ المحول: <strong style={{ color: '#2BED33' }}>{Number(order.total_sdg).toLocaleString()} ج.س</strong></p>
-                {order.receipt_url && (
-                  <a href={order.receipt_url} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', margin: '8px 0', color: '#00ccff', textDecoration: 'underline', fontSize: '12px' }}>
-                    🖼️ فتح صورة إشعار التحويل في نافذة جديدة
-                  </a>
-                )}
-                
-                {order.status === 'pending' && (
-                  <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
-                    <button onClick={() => handleApproveDeposit(order)} disabled={actionLoading} style={btnApproveStyle}>✅ اعتماد وإيداع الرصيد</button>
-                    <button onClick={() => handleRejectOrder(order.id)} disabled={actionLoading} style={btnRejectStyle}>❌ رفض</button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div style={{ fontSize: '13px', lineHeight: '1.6' }}>
-                <p style={{ margin: '4px 0' }}>🎮 اللعبة: <strong style={{ color: '#2BED33' }}>{order.game_name}</strong> - {order.package_name}</p>
-                <p style={{ margin: '4px 0' }}>🆔 معرف اللاعب (ID): <strong style={{ color: '#ffcc00', fontFamily: 'monospace', fontSize: '14px' }}>{order.game_id}</strong></p>
-                <p style={{ margin: '4px 0' }}>💰 التكلفة المخصومة: {Number(order.total_sdg).toLocaleString()} ج.س</p>
-                
-                {order.status === 'pending' && (
-                  <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
-                    <button onClick={() => handleCompleteGameOrder(order.id)} disabled={actionLoading} style={btnApproveStyle}>✔️ تم الشحن الفوري للاعب</button>
-                    <button onClick={() => handleRejectOrder(order.id)} disabled={actionLoading} style={btnRejectStyle}>❌ رفض وإرجاع الرصيد يدويًا</button>
-                  </div>
-                )}
-              </div>
-            )}
-            
-            <div style={{ fontSize: '10px', color: '#666', marginTop: '8px', textAlign: 'left' }}>
-              {new Date(order.created_at).toLocaleString('ar-SD')}
-            </div>
-
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
 
-const tabActiveStyle = { flex: 1, backgroundColor: '#2BED33', color: '#141414', border: 'none', padding: '10px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' };
-const tabInactiveStyle = { flex: 1, backgroundColor: '#141414', color: '#fff', border: '1px solid #333', padding: '10px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' };
-const btnApproveStyle = { flex: 2, backgroundColor: '#2BED33', color: '#141414', border: 'none', padding: '8px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' };
-const btnRejectStyle = { flex: 1, backgroundColor: '#ff4d4d', color: '#fff', border: 'none', padding: '8px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' };
+const styles = {
+  container: { backgroundColor: '#0a0a0a', minHeight: '100vh', color: '#fff', padding: '20px', fontFamily: 'system-ui, sans-serif', direction: 'rtl' },
+  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', backgroundColor: '#141414', padding: '16px', borderRadius: '12px', border: '1px solid #222' },
+  backBtn: { backgroundColor: '#222', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' },
+  subTabs: { display: 'flex', gap: '10px', marginBottom: '24px' },
+  tab: { flex: 1, backgroundColor: '#141414', color: '#aaa', border: '1px solid #222', padding: '12px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' },
+  activeTab: { flex: 1, backgroundColor: '#ffcc00', color: '#000', border: 'none', padding: '12px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' },
+  settingsForm: { backgroundColor: '#141414', padding: '24px', borderRadius: '16px', border: '1px solid #222', display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '600px', margin: '0 auto' },
+  input: { backgroundColor: '#1d1d1d', color: '#fff', border: '1px solid #333', padding: '12px', borderRadius: '8px', outline: 'none' },
+  saveBtn: { backgroundColor: '#2BED33', color: '#000', border: 'none', padding: '14px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', marginTop: '10px' },
+  adminOrderRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#141414', border: '1px solid #222', padding: '16px', borderRadius: '12px' },
+  approveBtn: { backgroundColor: '#2BED33', color: '#000', border: 'none', padding: '6px 12px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' },
+  rejectBtn: { backgroundColor: '#ff4d4d', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }
+};
