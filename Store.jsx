@@ -21,8 +21,14 @@ export default function Store({ user, onNavigate }) {
     try {
       // 1. جلب رصيد حساب العميل بالجنيه السوداني لعرضه في الأعلى
       if (user) {
-        const { data: profile } = await supabase.from('profiles').select('balance_sdg').eq('id', user.id).single();
-        if (profile) setBalanceSdg(profile.balance_sdg || 0);
+        const { data: profile, error: profileErr } = await supabase
+          .from('profiles')
+          .select('balance_sdg')
+          .eq('id', user.id)
+          .single();
+        if (profile) {
+          setBalanceSdg(Number(profile.balance_sdg) || 0);
+        }
       }
 
       // 2. قائمة عروض الألعاب الافتراضية بالجنيه السوداني
@@ -49,9 +55,10 @@ export default function Store({ user, onNavigate }) {
       setGames(mockGames);
 
     } catch (err) {
-      console.error(err);
+      console.error('Error fetching store data:', err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handlePurchaseSubmit = async (e) => {
@@ -97,16 +104,19 @@ export default function Store({ user, onNavigate }) {
 
       if (orderErr) throw orderErr;
 
-      alert(`🟢 تم خصم المبلغ بنجاح وإرسال طلب شحن ${selectedItem.name} بالـ ID: ${gameId} للأدمن محمد وجاري التنفيذ!`);
+      alert(`🟢 تم خصم المبلغ بنجاح وإرسال طلب شحن ${selectedItem.name} بالـ ID: ${gameId} للأدمن وجاري التنفيذ!`);
       
       setGameId('');
       setSelectedItem(null);
-      fetchStoreData();
+      
+      // تحديث البيانات محلياً فوراً لتجنب الوميض المزعج (Flash effect)
+      setBalanceSdg(nextBalance);
 
     } catch (err) {
       alert('حدث خطأ أثناء الشراء: ' + err.message);
+    } finally {
+      setBuying(false);
     }
-    setBuying(false);
   };
 
   if (loading) return <div style={{textAlign:'center', padding:'50px', color:'#2BED33', backgroundColor:'#141414', minHeight:'100vh'}}>جاري تحميل المتجر والعروض...</div>;
@@ -122,7 +132,7 @@ export default function Store({ user, onNavigate }) {
         </div>
       </div>
 
-      <p style={styles.welcomeHint}>مرحباً بك! اختر اللعبة ثم العرض المناسب، وسيتم الخصم مباشرة من رصيد محفظتك الرقمية بالجنيه.</p>
+      <p style={styles.welcomeHint}>مرحباً بك! اختر اللعبة ثم العرض المناسب، وسيتم الخصم مباشرة من رصيد محفظتك الرقمية بالجنيه السوداني.</p>
 
       {/* قسم عرض الألعاب المتاحة للموقع */}
       <div style={styles.gamesGrid}>
@@ -203,7 +213,7 @@ const styles = {
   buyBtn: { backgroundColor: '#1e1e1e', color: '#2BED33', border: '1px solid #2BED33', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' },
   overlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '15px', zIndex: 999 },
   modal: { backgroundColor: '#1e1e1e', border: '1px solid #2d2d2d', borderRadius: '12px', padding: '20px', width: '100%', maxWidth: '400px' },
-  modalInput: { backgroundColor: '#141414', color: '#ffffff', border: '1px solid #333', padding: '10px', borderRadius: '6px', fontSize: '14px', width: '100%', boxSizing: 'border-box' },
+  modalInput: { backgroundColor: '#141414', color: '#ffffff', border: '1px solid #333', padding: '10px', borderRadius: '6px', fontSize: '14px', width: '100%', boxSizing: 'border-box', textAlign: 'left', outline: 'none' },
   modalBtns: { display: 'flex', gap: '10px', marginTop: '10px' },
   confirmBtn: { flex: 2, backgroundColor: '#2BED33', color: '#141414', border: 'none', padding: '10px', borderRadius: '6px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer' },
   cancelBtn: { flex: 1, backgroundColor: '#333', color: '#fff', border: 'none', padding: '10px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }
