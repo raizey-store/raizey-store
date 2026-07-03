@@ -1,107 +1,56 @@
 // App.jsx
-// الملف الرئيسي لتوجيه الصفحات والأمان لمتجر RAIZEY STORE
+// ربط الواجهات بالسيستم الجديد والتنقل البرمجي السلس
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import Auth from './Auth';
-import Storefront from './Storefront';
+import Store from './Store';
 import Wallet from './Wallet';
-import OrderDetails from './OrderDetails';
 import AdminDashboard from './AdminDashboard';
-import AdminExchangeManager from './AdminExchangeManager';
 
 export default function App() {
   const [user, setUser] = useState(null);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [currentPage, setCurrentPage] = useState('store'); // store | wallet | order | admin | exchange
-  const [selectedOrderId, setSelectedOrderId] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [currentScreen, setCurrentScreen] = useState('store'); // الشاشة الافتراضية هي المتجر
 
   useEffect(() => {
-    // التحقق من الجلسة الحالية للمستخدم فوراً عند فتح الموقع
     supabase.auth.getSession().then(({ data: { session } }) => {
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
-      checkAdminStatus(currentUser);
+      setUser(session?.user ?? null);
     });
 
-    // الاستماع الفوري لأي تغيير في حالة الحساب (تسجيل دخول / خروج)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
-      checkAdminStatus(currentUser);
+      setUser(session?.user ?? null);
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  // دالة الأمان للتحقق من هوية الأدمن ومطابقة البريد الإلكتروني
-  const checkAdminStatus = (currentUser) => {
-    if (currentUser && currentUser.email === 'czgdfdx42@gmail.com') {
-      setIsAdmin(true);
-      setCurrentPage('admin'); // توجيه الأدمن تلقائياً للوحة التحكم عند الدخول
-    } else {
-      setIsAdmin(false);
-    }
-    setLoading(false);
+  const handleNavigate = (screenName) => {
+    setCurrentScreen(screenName);
   };
 
-  const handleNavigation = (page, data = {}) => {
-    setCurrentPage(page);
-    if (data.orderId) setSelectedOrderId(data.orderId);
-  };
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    setCurrentPage('store');
-  };
-
-  if (loading) {
-    return (
-      <div style={{backgroundColor: '#141414', minHeight: '100vh', color: '#2BED33', display: 'flex', justifyContent: 'center', alignItems: 'center', fontFamily: 'sans-serif'}}>
-        <h2>جاري فتح RAIZEY STORE الآمن...</h2>
-      </div>
-    );
-  }
-
-  // إذا لم يكن العميل مسجلاً، تظهر له صفحة الدخول والحماية أولاً
-  if (!user) {
-    return <Auth onLoginSuccess={(loggedInUser) => { setUser(loggedInUser); checkAdminStatus(loggedInUser); }} />;
-  }
+  // فحص ما إذا كان المستخدم الحالي هو الأدمن محمد الصادق لفتح اللوحة له
+  const isAdmin = user && user.email === 'mohamedalsadiq@gmail.com';
 
   return (
     <div style={{ backgroundColor: '#141414', minHeight: '100vh', color: '#ffffff' }}>
-      {/* شريط الإدارة السري - يظهر لك أنت فقط لحرية التنقل وتحديث أسعار الدولار مقابل الجنيه */}
-      {isAdmin && (
-        <div style={styles.adminNavbar}>
-          <button onClick={() => setCurrentPage('admin')} style={currentPage === 'admin' ? styles.activeAdminBtn : styles.adminBtn}>🎛️ إدارة الطلبات</button>
-          <button onClick={() => setCurrentPage('exchange')} style={currentPage === 'exchange' ? styles.activeAdminBtn : styles.adminBtn}>💲 تعديل أسعار الدولار</button>
-          <button onClick={() => setCurrentPage('store')} style={currentPage === 'store' ? styles.activeAdminBtn : styles.adminBtn}>🛒 تصفح كزبون</button>
-          <button onClick={handleLogout} style={styles.logoutBtn}>🚪 خروج</button>
-        </div>
-      )}
+      
+      {/* شريط التحكم السريع للأدمن والمستخدمين في أعلى الموقع */}
+      <div style={{ display: 'flex', gap: '10px', padding: '10px', backgroundColor: '#1e1e1e', justifyContent: 'center', borderBottom: '1px solid #2d2d2d' }}>
+        <button onClick={() => handleNavigate('store')} style={currentScreen === 'store' ? activeStyle : inactiveStyle}>🛒 المتجر الرئيسي</button>
+        <button onClick={() => handleNavigate('wallet')} style={currentScreen === 'wallet' ? activeStyle : inactiveStyle}>💼 محفظتي السودانية</button>
+        {isAdmin && (
+          <button onClick={() => handleNavigate('admin')} style={currentScreen === 'admin' ? adminActiveStyle : adminInactiveStyle}>🎛️ لوحة تحكم الإدارة</button>
+        )}
+      </div>
 
-      {/* عرض الصفحة المطلوبة بناءً على اختيار المستخدم أو الأدمن */}
-      {currentPage === 'store' && <Storefront user={user} onNavigate={handleNavigation} onLogout={handleLogout} isAdmin={isAdmin} />}
-      {currentPage === 'wallet' && <Wallet user={user} onNavigate={handleNavigation} />}
-      {currentPage === 'order' && <OrderDetails user={user} orderId={selectedOrderId} onNavigate={handleNavigation} />}
-      {currentPage === 'admin' && isAdmin && <AdminDashboard onNavigate={handleNavigation} />}
-      {currentPage === 'exchange' && isAdmin && <AdminExchangeManager />}
+      {/* عرض الشاشة المختارة بناءً على حالة التنقل الحالية */}
+      {currentScreen === 'store' && <Store user={user} onNavigate={handleNavigate} />}
+      {currentScreen === 'wallet' && <Wallet user={user} onNavigate={handleNavigate} />}
+      {currentScreen === 'admin' && isAdmin && <AdminDashboard onNavigate={handleNavigate} />}
+
     </div>
   );
 }
 
-const styles = {
-  adminNavbar: {
-    backgroundColor: '#1e1e1e',
-    padding: '10px',
-    display: 'flex',
-    gap: '8px',
-    justifyContent: 'center',
-    borderBottom: '2px solid #2BED33',
-    overflowX: 'auto',
-    direction: 'rtl'
-  },
-  adminBtn: { backgroundColor: '#141414', color: '#ffffff', border: '1px solid #333333', padding: '8px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' },
-  activeAdminBtn: { backgroundColor: '#2BED33', color: '#141414', border: 'none', padding: '8px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' },
-  logoutBtn: { backgroundColor: '#ff4d4d', color: '#ffffff', border: 'none', padding: '8px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', marginRight: 'auto' }
-};
+const activeStyle = { backgroundColor: '#2BED33', color: '#141414', border: 'none', padding: '6px 12px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' };
+const inactiveStyle = { backgroundColor: '#141414', color: '#ffffff', border: '1px solid #333', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' };
+const adminActiveStyle = { backgroundColor: '#ffcc00', color: '#141414', border: 'none', padding: '6px 12px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' };
+const adminInactiveStyle = { backgroundColor: '#141414', color: '#ffcc00', border: '1px solid #ffcc00', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' };
