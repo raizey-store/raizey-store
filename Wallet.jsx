@@ -1,18 +1,16 @@
 // Wallet.jsx
-// صفحة المحفظة الذكية وإيداع الإيصالات لمتجر RAIZEY STORE
+// تحديث شامل: المحفظة تعمل بالكامل بالجنيه السوداني (SDG) بناءً على طلب المدير محمد
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 
 export default function Wallet({ user, onNavigate }) {
-  const [balance, setBalance] = useState(0);
-  const [exchangeRate, setExchangeRate] = useState(0);
-  const [orders, setOrders] = useState([]);
+  const [balanceSdg, setBalanceSdg] = useState(0);
+  const [walletOrders, setWalletOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // حقول طلب شحن جديد
-  const [amountUsd, setAmountUsd] = useState('');
-  const [playerID, setPlayerID] = useState('');
-  const [gameType, setGameType] = useState('PUBG MOBILE');
+  // حقول طلب شحن رصيد المحفظة بالجنيه
+  const [amountSdg, setAmountSdg] = useState('');
+  const [transactionNumber, setTransactionNumber] = useState('');
   const [receiptFile, setReceiptFile] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -24,21 +22,18 @@ export default function Wallet({ user, onNavigate }) {
     if (!user) return;
     setLoading(true);
     try {
-      // 1. جلب سعر صرف الدولار بالسيستم
-      const { data: rateData } = await supabase.from('exchange_rates').select('rate').eq('id', 1).single();
-      if (rateData) setExchangeRate(rateData.rate);
+      // 1. جلب رصيد محفظة المستخدم الحالي بالجنيه السوداني
+      const { data: profileData } = await supabase.from('profiles').select('balance_sdg').eq('id', user.id).single();
+      if (profileData) setBalanceSdg(profileData.balance_sdg || 0);
 
-      // 2. جلب رصيد محفظة المستخدم الحالي (بالدولار)
-      const { data: profileData } = await supabase.from('profiles').select('balance_usd').eq('id', user.id).single();
-      if (profileData) setBalance(profileData.balance_usd);
-
-      // 3. جلب تاريخ طلبات الشحن الخاصة بهذا العميل
+      // 2. جلب تاريخ طلبات شحن المحفظة الخاصة بهذا العميل
       const { data: ordersData } = await supabase
         .from('orders')
         .select('*')
         .eq('user_id', user.id)
+        .eq('order_type', 'wallet_deposit')
         .order('created_at', { ascending: false });
-      if (ordersData) setOrders(ordersData);
+      if (ordersData) setWalletOrders(ordersData);
 
     } catch (err) {
       console.error(err);
@@ -54,14 +49,14 @@ export default function Wallet({ user, onNavigate }) {
 
   const handleDepositSubmit = async (e) => {
     e.preventDefault();
-    if (!amountUsd || !playerID || !receiptFile) {
-      alert('الرجاء تعبئة جميع الحقول ورفع صورة إيصال التحويل البنكي مسبقاً.');
+    if (!amountSdg || !transactionNumber || !receiptFile) {
+      alert('الرجاء تعبئة جميع الحقول ورفع صورة إيصال تحويل بنكك وكتابة رقم العملية.');
       return;
     }
 
     setSubmitting(true);
     try {
-      // 1. رفع صورة الإيصال إلى حوض التخزين (Storage) في Supabase
+      // 1. رفع صورة الإيصال إلى الـ Storage
       const fileExt = receiptFile.name.split('.').pop();
       const fileName = `${user.id}-${Date.now()}.${fileExt}`;
       const filePath = `receipts/${fileName}`;
@@ -72,97 +67,83 @@ export default function Wallet({ user, onNavigate }) {
 
       if (uploadError) throw uploadError;
 
-      // الحصول على الرابط العام للصورة المرفوعة
       const { data: { publicUrl } } = supabase.storage.from('receipts-bucket').getPublicUrl(filePath);
 
-      // 2. تسجيل الطلب في جدول الطلبات بالسيستم للمراجعة
-      const totalSdg = parseFloat(amountUsd) * exchangeRate;
+      // 2. تسجيل طلب شحن الرصيد بالجنيه السوداني في السيستم
       const { error: orderError } = await supabase.from('orders').insert({
         user_id: user.id,
         user_email: user.email,
-        amount_usd: parseFloat(amountUsd),
-        total_sdg: totalSdg,
-        player_id: playerID.trim(),
-        game_type: gameType,
+        total_sdg: parseFloat(amountSdg),
+        transaction_number: transactionNumber.trim(),
         receipt_url: publicUrl,
-        status: 'pending'
+        status: 'pending',
+        order_type: 'wallet_deposit'
       });
 
       if (orderError) throw orderError;
 
-      alert('تم إرسال طلب الشحن بنجاح! جاري مراجعة الإيصال وتفعيل رصيدك خلال دقائق من قبل الإدارة.');
-      setAmountUsd('');
-      setPlayerID('');
+      alert('تم إرسال طلب شحن المحفظة بنجاح! سيقوم محمد بمطابقة رقم العملية وتفعيل رصيدك بالجنيه فوراً.');
+      setAmountSdg('');
+      setTransactionNumber('');
       setReceiptFile(null);
       fetchWalletData();
 
     } catch (err) {
-      alert('حدث خطأ أثناء الرفع: ' + err.message);
+      alert('حدث خطأ أثناء إرسال الطلب: ' + err.message);
     }
     setSubmitting(false);
   };
 
-  if (loading) return <div style={{textAlign:'center', padding:'50px', color:'#2BED33', backgroundColor:'#141414', minHeight:'100vh'}}>جاري تحميل بيانات محفظتك الآمنة...</div>;
+  if (loading) return <div style={{textAlign:'center', padding:'50px', color:'#2BED33', backgroundColor:'#141414', minHeight:'100vh'}}>جاري تحميل بيانات محفظتك...</div>;
 
   return (
     <div style={styles.container}>
-      {/* شريط علوي للرجوع للمتجر */}
+      {/* شريط علوي للرجوع */}
       <div style={styles.topNav}>
-        <button onClick={() => onNavigate('store')} style={styles.backBtn}>🛒 العودة للمتجر</button>
-        <span style={styles.sectionTitle}>💼 إدارة الحساب والمحفظة</span>
+        <button onClick={() => onNavigate('store')} style={styles.backBtn}>🛒 الذهاب للمتجر لشراء العروض</button>
+        <span style={styles.sectionTitle}>💼 محفظتي الإلكترونية بالجنيه</span>
       </div>
 
-      {/* كارت عرض الرصيد الحالي للزبون */}
+      {/* كارت عرض الرصيد بالجنيه السوداني */}
       <div style={styles.balanceCard}>
-        <span style={styles.balanceLabel}>رصيدك الحالي المعتمد بالشحن</span>
-        <h1 style={styles.balanceAmount}>{balance.toLocaleString()} <small>$</small></h1>
-        <p style={styles.balanceSdg}>ما يعادل تقريباً: {(balance * exchangeRate).toLocaleString()} جنيه سوداني</p>
+        <span style={styles.balanceLabel}>رصيدك الحالي المتاح بالموقع</span>
+        <h1 style={styles.balanceAmount}>{balanceSdg.toLocaleString()} <small style={{fontSize:'16px'}}>ج.س</small></h1>
       </div>
 
-      {/* نموذج شحن الرصيد بإرسال التحويلة البنكية */}
+      {/* نموذج طلب شحن المحفظة بواسطة بنكك */}
       <div style={styles.depositSection}>
-        <h3 style={styles.subTitle}>📥 شحن المحفظة (تحويل بنكي / بنكك)</h3>
+        <h3 style={styles.subTitle}>📥 شحن رصيد المحفظة عبر تطبيق (بنكك - بنك الخرطوم)</h3>
         
         <div style={styles.bankAlertBox}>
-          <p style={{margin:'0 0 5px 0', fontWeight:'bold', color:'#2BED33'}}>⚠️ تعليمات الدفع المباشر:</p>
-          <p style={{margin:'0 0 4px 0'}}>الرجاء التحويل أولاً عبر تطبيق بنكك إلى الحساب التالي:</p>
+          <p style={{margin:'0 0 5px 0', fontWeight:'bold', color:'#2BED33'}}>💸 تفاصيل حساب تحويل الأموال:</p>
           <strong style={{color:'#ffffff'}}>رقم الحساب: 2905630</strong><br />
-          <strong style={{color:'#ffffff'}}>الاسم: فايزه الصادق هارون البشاري</strong>
-          <p style={{margin:'8px 0 0 0', fontSize:'11px', color:'#aaaaaa'}}>بعد التحويل، قم بتعبئة النموذج أدناه وارفق لقطة شاشة (إيصال التحويل).</p>
+          <strong style={{color:'#ffffff'}}>بنك: الخرطوم (تطبيق بنكك)</strong><br />
+          <strong style={{color:'#ffffff'}}>الاسم الكامل: فايزه الصادق هارون البشاري</strong>
+          <p style={{margin:'8px 0 0 0', fontSize:'11px', color:'#aaaaaa'}}>حول أي مبلغ تريده بالجنيه السوداني أولاً، ثم املأ البيانات أدناه لتفعيل رصيدك فوراً.</p>
         </div>
 
         <form onSubmit={handleDepositSubmit} style={styles.form}>
-          <label style={styles.label}>القيمة المطلوبة بالدولار ($):</label>
+          <label style={styles.label}>المبلغ الذي قمت بتحويله بالجنيه السوداني (ج.س):</label>
           <input 
             type="number" 
-            placeholder="مثال: 10" 
-            value={amountUsd}
-            onChange={(e) => setAmountUsd(e.target.value)}
+            placeholder="مثال: 25000" 
+            value={amountSdg}
+            onChange={(e) => setAmountSdg(e.target.value)}
             style={styles.input} 
             required
           />
-          {amountUsd && (
-            <span style={styles.calcHint}>المبلغ المستحق للدفع: {(parseFloat(amountUsd) * exchangeRate).toLocaleString()} جنيه سوداني</span>
-          )}
 
-          <label style={styles.label}>نوع اللعبة المراد شحنها:</label>
-          <select value={gameType} onChange={(e) => setGameType(e.target.value)} style={styles.select}>
-            <option value="PUBG MOBILE">ببجي موبايل (PUBG MOBILE)</option>
-            <option value="FREE FIRE">فري فاير (FREE FIRE)</option>
-            <option value="OTHER">خدمات أخرى / رصيد عام</option>
-          </select>
-
-          <label style={styles.label}>الأي دي الخاص بك باللعبة (Player ID):</label>
+          <label style={styles.label}>رقم العملية البنكية (الموجود في إشعار تطبيق بنكك):</label>
           <input 
             type="text" 
-            placeholder="اكتب الـ ID الخاص بك بدقة هنا" 
-            value={playerID}
-            onChange={(e) => setPlayerID(e.target.value)}
+            placeholder="أدخل رقم العملية المكون من أرقام بدقة" 
+            value={transactionNumber}
+            onChange={(e) => setTransactionNumber(e.target.value)}
             style={styles.input} 
             required
           />
 
-          <label style={styles.label}>ارفق صورة إيصال التحويل (بنكك):</label>
+          <label style={styles.label}>ارفق لقطة شاشة لإشعار تحويل بنكك:</label>
           <input 
             type="file" 
             accept="image/*" 
@@ -172,40 +153,36 @@ export default function Wallet({ user, onNavigate }) {
           />
 
           <button type="submit" disabled={submitting} style={styles.submitBtn}>
-            {submitting ? 'جاري رفع الإيصال وتأمين الطلب...' : '🚀 إرسال طلب الشحن للإدارة'}
+            {submitting ? 'جاري إرسال البيانات وتأمين الطلب...' : '🚀 إرسال طلب شحن رصيد المحفظة'}
           </button>
         </form>
       </div>
 
-      {/* جدول أو كروت لمتابعة حالة الطلبات السابقة */}
+      {/* سجل طلبات شحن المحفظة */}
       <div style={styles.historySection}>
-        <h3 style={styles.subTitle}>📑 سجل طلبات الشحن السابقة ومتابعة الحالة</h3>
-        {orders.length === 0 ? (
-          <p style={{color:'#aaaaaa', textAlign:'center', fontSize:'13px'}}>لم تقم بإرسال أي طلبات شحن بعد.</p>
+        <h3 style={styles.subTitle}>📑 طلبات شحن رصيد المحفظة السابقة</h3>
+        {walletOrders.length === 0 ? (
+          <p style={{color:'#aaaaaa', textAlign:'center', fontSize:'13px'}}>لم تقم بتقديم طلبات إيداع مسبقة.</p>
         ) : (
           <div style={styles.ordersList}>
-            {orders.map(order => (
+            {walletOrders.map(order => (
               <div key={order.id} style={styles.orderCard}>
                 <div style={styles.orderRow}>
-                  <span>طلب شحن: <strong>{order.amount_usd} $</strong></span>
+                  <span>طلب إيداع: <strong style={{color:'#2BED33'}}>{order.total_sdg.toLocaleString()} ج.س</strong></span>
                   <span style={
                     order.status === 'approved' ? styles.statusApproved : 
                     order.status === 'rejected' ? styles.statusRejected : styles.statusPending
                   }>
-                    {order.status === 'approved' ? '🟢 مكتمل ومكفول' : 
-                     order.status === 'rejected' ? '🔴 مرفوض' : '🟡 قيد المراجعة'}
+                    {order.status === 'approved' ? '🟢 تم التأكيد وإيداع الرصيد' : 
+                     order.status === 'rejected' ? '🔴 مرفوض' : '🟡 قيد المطابقة والبحث'}
                   </span>
                 </div>
                 <div style={styles.orderRowDetails}>
-                  <span>اللعبة: {order.game_type}</span>
-                  <span>ID: {order.player_id}</span>
-                </div>
-                <div style={styles.orderDate}>
-                  تاريخ الطلب: {new Date(order.created_at).toLocaleDateString('ar-SD')}
+                  <span>رقم العملية: {order.transaction_number}</span>
                 </div>
                 {order.status === 'pending' && (
-                  <a href={`https://wa.me/249901815039?text=مرحبا برئيس المتجر، قمت برفع طلب شحن بقيمة ${order.amount_usd} دولار لحسابي.`} target="_blank" rel="noopener noreferrer" style={styles.waLink}>
-                    ⚡ استعجال الطلب عبر الواتساب
+                  <a href={`https://wa.me/249901815039?text=مرحبا برئيس المتجر محمد، قمت بتحويل ${order.total_sdg} ج.س لرقم العملية ${order.transaction_number} لتفعيل محفظتي.`} target="_blank" rel="noopener noreferrer" style={styles.waLink}>
+                    ⚡ استعجال الإيداع عبر واتساب الأدمن
                   </a>
                 )}
               </div>
@@ -220,30 +197,26 @@ export default function Wallet({ user, onNavigate }) {
 const styles = {
   container: { backgroundColor: '#141414', minHeight: '100vh', color: '#ffffff', fontFamily: 'sans-serif', direction: 'rtl', padding: '15px' },
   topNav: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #2d2d2d', paddingBottom: '10px' },
-  backBtn: { backgroundColor: '#1e1e1e', color: '#2BED33', border: '1px solid #2BED33', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' },
+  backBtn: { backgroundColor: '#2BED33', color: '#141414', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' },
   sectionTitle: { fontSize: '16px', fontWeight: 'bold' },
-  balanceCard: { backgroundColor: '#1e1e1e', borderRadius: '12px', padding: '20px', textAlign: 'center', border: '1px solid #2d2d2d', marginBottom: '20px', boxShadow: '0 4px 12px rgba(0,0,0,0.3)' },
+  balanceCard: { backgroundColor: '#1e1e1e', borderRadius: '12px', padding: '20px', textAlign: 'center', border: '1px solid #2d2d2d', marginBottom: '20px' },
   balanceLabel: { color: '#aaaaaa', fontSize: '13px' },
   balanceAmount: { color: '#2BED33', fontSize: '36px', margin: '10px 0', fontWeight: 'bold' },
-  balanceSdg: { color: '#888888', fontSize: '12px', margin: 0 },
   depositSection: { backgroundColor: '#1e1e1e', borderRadius: '12px', padding: '20px', border: '1px solid #2d2d2d', marginBottom: '20px' },
-  subTitle: { margin: '0 0 15px 0', fontSize: '15px', borderBottom: '1px solid #333', paddingBottom: '8px', color: '#ffffff' },
-  bankAlertBox: { backgroundColor: 'rgba(43, 237, 51, 0.05)', border: '1px dashed #2BED33', padding: '12px', borderRadius: '8px', fontSize: '13px', lineHeight: '1.5', color: '#dddddd', marginBottom: '15px' },
+  subTitle: { margin: '0 0 15px 0', fontSize: '15px', borderBottom: '1px solid #333', paddingBottom: '8px' },
+  bankAlertBox: { backgroundColor: 'rgba(43, 237, 51, 0.05)', border: '1px dashed #2BED33', padding: '12px', borderRadius: '8px', fontSize: '13px', lineHeight: '1.5', marginBottom: '15px' },
   form: { display: 'flex', flexDirection: 'column', gap: '12px' },
   label: { fontSize: '13px', color: '#cccccc' },
-  input: { backgroundColor: '#141414', color: '#ffffff', border: '1px solid #333', padding: '10px', borderRadius: '6px', fontSize: '14px', outline: 'none' },
-  select: { backgroundColor: '#141414', color: '#ffffff', border: '1px solid #333', padding: '10px', borderRadius: '6px', fontSize: '14px', outline: 'none' },
-  fileInput: { color: '#aaaaaa', fontSize: '13px', padding: '5px 0' },
-  calcHint: { fontSize: '12px', color: '#2BED33', marginTop: '-4px' },
-  submitBtn: { backgroundColor: '#2BED33', color: '#141414', border: 'none', padding: '12px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '14px', marginTop: '10px' },
+  input: { backgroundColor: '#141414', color: '#ffffff', border: '1px solid #333', padding: '10px', borderRadius: '6px', fontSize: '14px' },
+  fileInput: { color: '#aaaaaa', fontSize: '13px' },
+  submitBtn: { backgroundColor: '#141414', color: '#2BED33', border: '1px solid #2BED33', padding: '12px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '14px' },
   historySection: { backgroundColor: '#1e1e1e', borderRadius: '12px', padding: '20px', border: '1px solid #2d2d2d' },
   ordersList: { display: 'flex', flexDirection: 'column', gap: '12px' },
   orderCard: { backgroundColor: '#141414', padding: '12px', borderRadius: '8px', border: '1px solid #2d2d2d' },
-  orderRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '14px', marginBottom: '6px' },
-  orderRowDetails: { display: 'flex', gap: '15px', fontSize: '12px', color: '#aaaaaa', marginBottom: '6px' },
-  orderDate: { fontSize: '10px', color: '#666666' },
+  orderRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '14px' },
+  orderRowDetails: { display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#aaaaaa', marginTop: '6px' },
   statusPending: { color: '#ffcc00', fontWeight: 'bold', fontSize: '12px' },
   statusApproved: { color: '#2BED33', fontWeight: 'bold', fontSize: '12px' },
   statusRejected: { color: '#ff4d4d', fontWeight: 'bold', fontSize: '12px' },
-  waLink: { display: 'inline-block', marginTop: '8px', color: '#2BED33', fontSize: '12px', textDecoration: 'none', fontWeight: 'bold' }
+  waLink: { display: 'inline-block', marginTop: '8px', color: '#2BED33', fontSize: '12px', textDecoration: 'none' }
 };
